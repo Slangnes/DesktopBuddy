@@ -136,10 +136,18 @@ function createWindow(savedState = null) {
     win.setAlwaysOnTop(true, 'floating');
     win.setIgnoreMouseEvents(false);
 
-    // Block native resize borders (prevents drag-to-grow bug)
-    // Programmatic setSize() calls bypass this event
+    // Block native drag-to-resize but allow programmatic setSize()
+    let programmaticResize = false;
+    const originalSetSize = win.setSize.bind(win);
+    win.setSize = (w, h, ...args) => {
+        programmaticResize = true;
+        originalSetSize(w, h, ...args);
+        programmaticResize = false;
+    };
     win.on('will-resize', (e) => {
-        e.preventDefault();
+        if (!programmaticResize) {
+            e.preventDefault();
+        }
     });
 
     win.on('closed', () => {
