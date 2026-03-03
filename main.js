@@ -120,7 +120,7 @@ function createWindow(savedState = null) {
         frame: false,
         transparent: true,
         alwaysOnTop: true,
-        resizable: true,
+        resizable: false,
         skipTaskbar: false,
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
@@ -135,20 +135,6 @@ function createWindow(savedState = null) {
     win.loadFile('index.html');
     win.setAlwaysOnTop(true, 'floating');
     win.setIgnoreMouseEvents(false);
-
-    // Block native drag-to-resize but allow programmatic setSize()
-    let programmaticResize = false;
-    const originalSetSize = win.setSize.bind(win);
-    win.setSize = (w, h, ...args) => {
-        programmaticResize = true;
-        originalSetSize(w, h, ...args);
-        programmaticResize = false;
-    };
-    win.on('will-resize', (e) => {
-        if (!programmaticResize) {
-            e.preventDefault();
-        }
-    });
 
     win.on('closed', () => {
         windows.delete(id);
@@ -221,11 +207,12 @@ ipcMain.on('set-window-icon', (event, dataUrl) => {
     }
 });
 
-// Handle window resize
+// Handle window resize (use setBounds to work with resizable:false)
 ipcMain.on('resize-window', (event, width, height) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (win) {
-        win.setSize(Math.round(width), Math.round(height));
+        const [x, y] = win.getPosition();
+        win.setBounds({ x, y, width: Math.round(width), height: Math.round(height) });
     }
 });
 
