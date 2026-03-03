@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, screen, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const AdmZip = require('adm-zip');
 
 app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
 
@@ -263,7 +264,7 @@ ipcMain.on('toggle-clickthrough', (event, enabled) => {
     }
 });
 
-// Export buddy as .buddy file (JSON + video copied into a folder)
+// Export buddy as .buddy file (zip archive containing video + config)
 ipcMain.handle('export-buddy', async (event, appState) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!appState?.videoPath) return false;
@@ -276,19 +277,14 @@ ipcMain.handle('export-buddy', async (event, appState) => {
     if (result.canceled || !result.filePath) return false;
 
     try {
-        const exportDir = result.filePath;
-        // .buddy file is a directory containing video + config
-        if (!fs.existsSync(exportDir)) {
-            fs.mkdirSync(exportDir, { recursive: true });
-        }
+        const zip = new AdmZip();
 
-        // Copy video file
+        // Add video file
         const videoExt = path.extname(appState.videoPath);
         const videoName = 'video' + videoExt;
-        const destVideo = path.join(exportDir, videoName);
-        fs.copyFileSync(appState.videoPath, destVideo);
+        zip.addLocalFile(appState.videoPath, '', videoName);
 
-        // Write config
+        // Add config
         const config = {
             videoFile: videoName,
             chromaColor: appState.chromaColor,
@@ -296,8 +292,9 @@ ipcMain.handle('export-buddy', async (event, appState) => {
             opacity: appState.opacity,
             maskData: appState.maskData
         };
-        fs.writeFileSync(path.join(exportDir, 'buddy.json'), JSON.stringify(config, null, 2));
+        zip.addFile('buddy.json', Buffer.from(JSON.stringify(config, null, 2), 'utf8'));
 
+        zip.writeZip(result.filePath);
         return true;
     } catch (e) {
         console.error('Export failed:', e);
@@ -309,23 +306,27 @@ ipcMain.handle('export-buddy', async (event, appState) => {
 ipcMain.handle('import-buddy', async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     const result = await dialog.showOpenDialog(win, {
-        properties: ['openDirectory'],
+        properties: ['openFile'],
         filters: [{ name: 'Desktop Buddy', extensions: ['buddy'] }]
     });
 
     if (result.canceled || !result.filePaths.length) return null;
 
     try {
-        const buddyDir = result.filePaths[0];
-        const configPath = path.join(buddyDir, 'buddy.json');
-        if (!fs.existsSync(configPath)) return null;
+        const zip = new AdmZip(result.filePaths[0]);
+        const configEntry = zip.getEntry('buddy.json');
+        if (!configEntry) return null;
 
-        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        const config = JSON.parse(zip.readAsText(configEntry));
+
+        // Extract video to a temp dir in userData
+        const buddyDir = path.join(app.getPath('userData'), 'imported-buddies', path.basename(result.filePaths[0], '.buddy') + '-' + Date.now());
+        fs.mkdirSync(buddyDir, { recursive: true });
+        zip.extractAllTo(buddyDir, true);
+
         const videoPath = path.join(buddyDir, config.videoFile);
-
         if (!fs.existsSync(videoPath)) return null;
 
-        // Spawn a new window with this config
         const state = {
             videoPath: videoPath,
             chromaEnabled: !!config.chromaColor,
