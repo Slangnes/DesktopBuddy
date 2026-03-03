@@ -1,0 +1,41 @@
+{
+  "name": "desktop-buddy",
+  "version": "1.0.0",
+  "description": "Desktop buddy widget - looping video with chroma key and mask",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win"
+  },
+  "build": {
+    "appId": "com.desktopbuddy.app",
+    "productName": "Desktop Buddy",
+    "win": {
+      "target": "nsis",
+      "icon": null
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "controls-preload.js",
+      "index.html",
+      "controls.html"
+    ],
+    "nsis": {
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false
+    },
+    "fileAssociations": [
+      {
+        "ext": "buddy",
+        "name": "Desktop Buddy File",
+        "description": "Desktop Buddy configuration",
+        "role": "Viewer"
+      }
+    ]
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.13.3"
+  }
+}

@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Buddy Controls</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+            font-size: 12px;
+            color: #e0e0e0;
+            background: #1e1e1e;
+            padding: 12px;
+            -webkit-app-region: drag;
+            user-select: none;
+        }
+
+        /* Make interactive elements non-draggable */
+        button,
+        input,
+        label,
+        .color-row,
+        .section-content {
+            -webkit-app-region: no-drag;
+        }
+
+        h2 {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #888;
+            margin-bottom: 8px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid #333;
+        }
+
+        .section {
+            margin-bottom: 14px;
+        }
+
+        .section:last-child {
+            margin-bottom: 0;
+        }
+
+        .row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .row:last-child {
+            margin-bottom: 0;
+        }
+
+        .row label {
+            flex: 0 0 65px;
+            font-size: 11px;
+        }
+
+        .row input[type="range"] {
+            flex: 1;
+            height: 4px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: #444;
+            border-radius: 2px;
+            cursor: pointer;
+        }
+
+        .row input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 12px;
+            height: 12px;
+            background: #fff;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .row-value {
+            width: 32px;
+            text-align: right;
+            font-family: monospace;
+            font-size: 10px;
+            color: #888;
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 5px;
+            background: #333;
+            color: #e0e0e0;
+            cursor: pointer;
+            font-size: 11px;
+            font-family: inherit;
+            transition: background 0.15s;
+        }
+
+        .btn:hover {
+            background: #444;
+        }
+
+        .btn.active {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .btn.danger {
+            background: #4a1c1c;
+            color: #ff6b6b;
+        }
+
+        .btn.danger:hover {
+            background: #5c2020;
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 6px;
+        }
+
+        .btn-row .btn {
+            flex: 1;
+        }
+
+        /* Color swatch */
+        #colorPreview {
+            width: 28px;
+            height: 28px;
+            border: 2px solid #555;
+            border-radius: 5px;
+            background: #00ff00;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        #colorPreview:hover {
+            border-color: #888;
+        }
+
+        .color-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        #eyedropperBtn {
+            width: 28px;
+            height: 28px;
+            border: 2px solid #555;
+            border-radius: 5px;
+            background: #333;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        #eyedropperBtn:hover {
+            background: #444;
+            border-color: #888;
+        }
+
+        #eyedropperBtn.active {
+            background: #4CAF50;
+            border-color: #4CAF50;
+        }
+
+        #chromaColor {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        /* Mask active state */
+        #maskBtn.active {
+            background: #e91e63;
+            color: white;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="section">
+        <h2>Display</h2>
+        <div class="row">
+            <label>Opacity</label>
+            <input type="range" id="opacitySlider" min="10" max="100" value="100">
+            <span class="row-value" id="opacityValue">100%</span>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Chroma Key</h2>
+        <div class="row">
+            <label>Color</label>
+            <div class="color-row">
+                <div id="colorPreview"></div>
+                <button id="eyedropperBtn" title="Pick color from buddy">&#128083;</button>
+            </div>
+        </div>
+        <input type="color" id="chromaColor" value="#00ff00">
+        <div class="row">
+            <label>Tolerance</label>
+            <input type="range" id="chromaTolerance" min="0" max="150" value="0">
+            <span class="row-value" id="toleranceValue">0</span>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Mask</h2>
+        <div class="btn-row">
+            <button id="maskBtn" class="btn">&#9998; Paint Mask</button>
+            <button id="clearMaskBtn" class="btn">Clear Mask</button>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Buddy</h2>
+        <div class="btn-row">
+            <button id="loadBtn" class="btn">Change Video</button>
+            <button id="sizeBtn" class="btn">Reset Size</button>
+        </div>
+        <div class="btn-row" style="margin-top: 6px;">
+            <button id="newBuddyBtn" class="btn">+ New Buddy</button>
+        </div>
+        <div class="btn-row" style="margin-top: 6px;">
+            <button id="exportBtn" class="btn">Export</button>
+            <button id="importBtn" class="btn">Import</button>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="btn-row">
+            <button id="closeBtn" class="btn danger">Close Buddy</button>
+        </div>
+    </div>
+
+    <script>
+        const api = window.controlsAPI;
+
+        // Elements
+        const opacitySlider = document.getElementById('opacitySlider');
+        const opacityValue = document.getElementById('opacityValue');
+        const chromaColor = document.getElementById('chromaColor');
+        const chromaTolerance = document.getElementById('chromaTolerance');
+        const toleranceValue = document.getElementById('toleranceValue');
+        const colorPreview = document.getElementById('colorPreview');
+        const eyedropperBtn = document.getElementById('eyedropperBtn');
+        const maskBtn = document.getElementById('maskBtn');
+        const clearMaskBtn = document.getElementById('clearMaskBtn');
+        const loadBtn = document.getElementById('loadBtn');
+        const sizeBtn = document.getElementById('sizeBtn');
+        const newBuddyBtn = document.getElementById('newBuddyBtn');
+        const exportBtn = document.getElementById('exportBtn');
+        const importBtn = document.getElementById('importBtn');
+        const closeBtn = document.getElementById('closeBtn');
+
+        let maskActive = false;
+
+        // Load initial state from buddy
+        async function init() {
+            const state = await api.getState();
+            if (!state) return;
+
+            if (state.opacity != null) {
+                opacitySlider.value = state.opacity;
+                opacityValue.textContent = state.opacity + '%';
+            }
+            if (state.chromaColor) {
+                chromaColor.value = state.chromaColor;
+                colorPreview.style.background = state.chromaColor;
+            }
+            if (state.chromaTolerance != null) {
+                chromaTolerance.value = state.chromaTolerance;
+                toleranceValue.textContent = state.chromaTolerance;
+            }
+        }
+
+        init();
+
+        // Opacity
+        opacitySlider.addEventListener('input', () => {
+            const v = opacitySlider.value;
+            opacityValue.textContent = v + '%';
+            api.updateSetting('opacity', v);
+        });
+
+        // Chroma color
+        colorPreview.addEventListener('click', () => chromaColor.click());
+
+        chromaColor.addEventListener('input', () => {
+            const c = chromaColor.value;
+            colorPreview.style.background = c;
+            api.updateSetting('chromaColor', c);
+        });
+
+        // Tolerance
+        chromaTolerance.addEventListener('input', () => {
+            const v = chromaTolerance.value;
+            toleranceValue.textContent = v;
+            api.updateSetting('chromaTolerance', v);
+        });
+
+        // Eyedropper
+        eyedropperBtn.addEventListener('click', () => {
+            eyedropperBtn.classList.add('active');
+            api.startEyedropper();
+        });
+
+        // Listen for color picked from buddy
+        api.onColorPicked((color) => {
+            eyedropperBtn.classList.remove('active');
+            chromaColor.value = color;
+            colorPreview.style.background = color;
+            // Auto-set tolerance if 0
+            if (parseInt(chromaTolerance.value) === 0) {
+                chromaTolerance.value = 50;
+                toleranceValue.textContent = '50';
+            }
+        });
+
+        // Mask
+        maskBtn.addEventListener('click', () => {
+            api.toggleMask();
+        });
+
+        api.onMaskState((active) => {
+            maskActive = active;
+            maskBtn.classList.toggle('active', active);
+        });
+
+        clearMaskBtn.addEventListener('click', () => api.clearMask());
+
+        // Actions
+        loadBtn.addEventListener('click', () => api.changeVideo());
+        sizeBtn.addEventListener('click', () => api.resetSize());
+        newBuddyBtn.addEventListener('click', () => api.newBuddy());
+        exportBtn.addEventListener('click', () => api.exportBuddy());
+        importBtn.addEventListener('click', () => api.importBuddy());
+        closeBtn.addEventListener('click', () => api.closeBuddy());
+
+        // Sync state from buddy (e.g. if buddy changes internally)
+        api.onStateSync((state) => {
+            if (state.opacity != null) {
+                opacitySlider.value = state.opacity;
+                opacityValue.textContent = state.opacity + '%';
+            }
+            if (state.chromaColor) {
+                chromaColor.value = state.chromaColor;
+                colorPreview.style.background = state.chromaColor;
+            }
+            if (state.chromaTolerance != null) {
+                chromaTolerance.value = state.chromaTolerance;
+                toleranceValue.textContent = state.chromaTolerance;
+            }
+        });
+    </script>
+</body>
+
+</html>

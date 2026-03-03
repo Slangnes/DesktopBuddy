@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Desktop Buddy</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: transparent;
+            user-select: none;
+        }
+
+        #container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        #video {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            pointer-events: none;
+        }
+
+        #dropzone {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.7);
+            border: 2px dashed #fff;
+            border-radius: 10px;
+            color: white;
+            font-family: system-ui, -apple-system, sans-serif;
+            cursor: pointer;
+            -webkit-app-region: no-drag;
+        }
+
+        #dropzone:hover {
+            background: rgba(0, 0, 0, 0.8);
+            border-color: #4CAF50;
+        }
+
+        #dropzone.dragover {
+            background: rgba(76, 175, 80, 0.3);
+            border-color: #4CAF50;
+        }
+
+        #dropzone svg {
+            width: 40px;
+            height: 40px;
+            margin-bottom: 10px;
+            opacity: 0.8;
+        }
+
+        #dropzone p {
+            font-size: 12px;
+            text-align: center;
+            padding: 0 10px;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+
+        /* Drag handle - the video area */
+        #dragHandle {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            cursor: grab;
+        }
+
+        #dragHandle.dragging {
+            cursor: grabbing;
+        }
+
+        /* Size indicator */
+        #sizeIndicator {
+            position: absolute;
+            bottom: 4px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 10px;
+            font-family: monospace;
+            opacity: 0;
+            transition: opacity 0.2s;
+            pointer-events: none;
+        }
+
+        #sizeIndicator.visible {
+            opacity: 1;
+        }
+
+        /* Resize handle */
+        #resizeHandle {
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            width: 15px;
+            height: 15px;
+            cursor: nwse-resize;
+            -webkit-app-region: no-drag;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        #container:hover #resizeHandle {
+            opacity: 0.5;
+        }
+
+        #resizeHandle::before {
+            content: '';
+            position: absolute;
+            bottom: 2px;
+            right: 2px;
+            width: 8px;
+            height: 8px;
+            border-right: 2px solid white;
+            border-bottom: 2px solid white;
+        }
+
+        /* Settings panel - removed, controls in separate window */
+
+        /* Canvas for chroma key */
+        #chromaCanvas {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            pointer-events: none;
+        }
+
+        /* Picking mode */
+        .picking-mode {
+            cursor: crosshair !important;
+        }
+
+        .picking-mode * {
+            cursor: crosshair !important;
+        }
+
+        .picking-mode #dragHandle {
+            pointer-events: none;
+        }
+
+        /* Mask canvas */
+        #maskCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .mask-mode #maskCanvas {
+            pointer-events: auto;
+            cursor: crosshair;
+        }
+
+        .mask-mode #dragHandle {
+            pointer-events: none;
+        }
+
+        /* Tutorial overlay */
+        #tutorial {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.88);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: system-ui, -apple-system, sans-serif;
+            color: white;
+            padding: 16px;
+            text-align: center;
+        }
+
+        #tutorial .step-icon {
+            font-size: 36px;
+            margin-bottom: 10px;
+        }
+
+        #tutorial .step-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        #tutorial .step-text {
+            font-size: 11px;
+            line-height: 1.5;
+            opacity: 0.8;
+            max-width: 180px;
+            margin-bottom: 14px;
+        }
+
+        #tutorial .step-dots {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 12px;
+        }
+
+        #tutorial .step-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        #tutorial .step-dot.active {
+            background: white;
+        }
+
+        #tutorial .step-btn {
+            padding: 6px 20px;
+            border: none;
+            border-radius: 14px;
+            background: white;
+            color: #111;
+            font-size: 11px;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            transition: transform 0.1s, opacity 0.1s;
+        }
+
+        #tutorial .step-btn:hover {
+            transform: scale(1.05);
+        }
+
+        #tutorial .skip-btn {
+            position: absolute;
+            top: 8px;
+            right: 10px;
+            background: none;
+            border: none;
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 10px;
+            font-family: inherit;
+            cursor: pointer;
+        }
+
+        #tutorial .skip-btn:hover {
+            color: rgba(255, 255, 255, 0.7);
+        }
+    </style>
+</head>
+
+<body>
+    <div id="container">
+        <div id="dragHandle"></div>
+
+        <div id="dropzone">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+            </svg>
+            <p>Drop webm here<br>or click to browse</p>
+        </div>
+
+        <video id="video" class="hidden" loop muted autoplay></video>
+        <canvas id="chromaCanvas" class="hidden"></canvas>
+        <canvas id="maskCanvas" class="hidden"></canvas>
+
+        <div id="resizeHandle"></div>
+        <div id="sizeIndicator"></div>
+
+        <div id="tutorial" class="hidden">
+            <button class="skip-btn" id="tutorialSkip">skip</button>
+            <div class="step-icon" id="tutorialIcon"></div>
+            <div class="step-title" id="tutorialTitle"></div>
+            <div class="step-text" id="tutorialText"></div>
+            <div class="step-dots" id="tutorialDots"></div>
+            <button class="step-btn" id="tutorialNext">Next</button>
+        </div>
+    </div>
+
+    <script>
+        const dropzone = document.getElementById('dropzone');
+        const video = document.getElementById('video');
+        const container = document.getElementById('container');
+        const sizeIndicator = document.getElementById('sizeIndicator');
+        const resizeHandle = document.getElementById('resizeHandle');
+        const dragHandle = document.getElementById('dragHandle');
+        const chromaCanvas = document.getElementById('chromaCanvas');
+        const ctx = chromaCanvas.getContext('2d', { willReadFrequently: true });
+        const maskCanvas = document.getElementById('maskCanvas');
+        const maskCtx = maskCanvas.getContext('2d', { willReadFrequently: true });
+
+        let originalWidth = 200;
+        let originalHeight = 200;
+        let animationFrameId = null;
+        let pickingMode = false;
+        let maskMode = false;
+        let isPainting = false;
+        let currentVideoPath = null;
+        let chromaColor_value = null;
+        let chromaTolerance_value = 0;
+        let opacity_value = 100;
+        let maskData = null;
+
+        // Temporary canvas for color sampling
+        const sampleCanvas = document.createElement('canvas');
+        const sampleCtx = sampleCanvas.getContext('2d', { willReadFrequently: true });
+
+        // Parse hex color to RGB
+        function hexToRgb(hex) {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? {
+                r: parseInt(result[1], 16),
+                g: parseInt(result[2], 16),
+                b: parseInt(result[3], 16)
+            } : { r: 0, g: 255, b: 0 };
+        }
+
+        function rgbToHex(r, g, b) {
+            return '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');
+        }
+
+        // Icon thumbnail canvas
+        const iconCanvas = document.createElement('canvas');
+        iconCanvas.width = 32;
+        iconCanvas.height = 32;
+        const iconCtx = iconCanvas.getContext('2d');
+        let iconSet = false;
+
+        function updateWindowIcon() {
+            if (!chromaCanvas.width || !chromaCanvas.height) return;
+            iconCtx.clearRect(0, 0, 32, 32);
+            // Fit into 32x32 preserving aspect ratio
+            const scale = Math.min(32 / chromaCanvas.width, 32 / chromaCanvas.height);
+            const w = chromaCanvas.width * scale;
+            const h = chromaCanvas.height * scale;
+            iconCtx.drawImage(chromaCanvas, (32 - w) / 2, (32 - h) / 2, w, h);
+            window.electronAPI.setWindowIcon(iconCanvas.toDataURL('image/png'));
+        }
+
+        // Render loop - always draws through canvas
+        function renderFrame() {
+            if (video.paused || video.ended) {
+                animationFrameId = requestAnimationFrame(renderFrame);
+                return;
+            }
+
+            chromaCanvas.width = video.videoWidth;
+            chromaCanvas.height = video.videoHeight;
+
+            ctx.drawImage(video, 0, 0);
+
+            const tolerance = chromaTolerance_value;
+            const hasChroma = chromaColor_value && tolerance > 0;
+            const hasMask = !!maskData;
+
+            if (hasChroma || hasMask) {
+                const imageData = ctx.getImageData(0, 0, chromaCanvas.width, chromaCanvas.height);
+                const data = imageData.data;
+
+                if (hasChroma) {
+                    const keyColor = hexToRgb(chromaColor_value);
+                    for (let i = 0; i < data.length; i += 4) {
+                        const r = data[i];
+                        const g = data[i + 1];
+                        const b = data[i + 2];
+                        const distance = Math.sqrt(
+                            (r - keyColor.r) ** 2 +
+                            (g - keyColor.g) ** 2 +
+                            (b - keyColor.b) ** 2
+                        );
+                        if (distance < tolerance) {
+                            data[i + 3] = 0;
+                        } else if (distance < tolerance + 30) {
+                            data[i + 3] = Math.floor(255 * (distance - tolerance) / 30);
+                        }
+                    }
+                }
+
+                if (hasMask) {
+                    const maskImageData = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
+                    const maskPixels = maskImageData.data;
+                    const scaleX = maskCanvas.width / chromaCanvas.width;
+                    const scaleY = maskCanvas.height / chromaCanvas.height;
+                    for (let y = 0; y < chromaCanvas.height; y++) {
+                        for (let x = 0; x < chromaCanvas.width; x++) {
+                            const mx = Math.floor(x * scaleX);
+                            const my = Math.floor(y * scaleY);
+                            const mi = (my * maskCanvas.width + mx) * 4;
+                            if (maskPixels[mi + 3] > 128) {
+                                const i = (y * chromaCanvas.width + x) * 4;
+                                data[i + 3] = 0;
+                            }
+                        }
+                    }
+                }
+
+                ctx.putImageData(imageData, 0, 0);
+            }
+
+            // Update taskbar icon from first rendered frame, then periodically
+            if (!iconSet || Math.random() < 0.01) {
+                iconSet = true;
+                updateWindowIcon();
+            }
+
+            animationFrameId = requestAnimationFrame(renderFrame);
+        }
+
+        // Sample color from video at position
+        function sampleColorAt(x, y) {
+            sampleCanvas.width = video.videoWidth;
+            sampleCanvas.height = video.videoHeight;
+            sampleCtx.drawImage(video, 0, 0);
+
+            const rect = chromaCanvas.getBoundingClientRect();
+            const scaleX = video.videoWidth / rect.width;
+            const scaleY = video.videoHeight / rect.height;
+            const videoX = Math.floor((x - rect.left) * scaleX);
+            const videoY = Math.floor((y - rect.top) * scaleY);
+
+            const pixel = sampleCtx.getImageData(videoX, videoY, 1, 1).data;
+            return rgbToHex(pixel[0], pixel[1], pixel[2]);
+        }
+
+        // Click handler for color picking
+        container.addEventListener('click', (e) => {
+            if (!pickingMode) return;
+            e.preventDefault();
+            e.stopPropagation();
+
+            const color = sampleColorAt(e.clientX, e.clientY);
+            chromaColor_value = color;
+
+            // Auto-set tolerance if 0
+            if (chromaTolerance_value === 0) {
+                chromaTolerance_value = 50;
+            }
+
+            pickingMode = false;
+            document.body.classList.remove('picking-mode');
+
+            // Notify controls window
+            window.electronAPI.colorPicked(color);
+        }, true);
+
+        // Mask painting
+        function initMaskCanvas() {
+            maskCanvas.width = video.videoWidth;
+            maskCanvas.height = video.videoHeight;
+            maskCanvas.classList.remove('hidden');
+        }
+
+        function getMaskCoords(e) {
+            const rect = maskCanvas.getBoundingClientRect();
+            const scaleX = maskCanvas.width / rect.width;
+            const scaleY = maskCanvas.height / rect.height;
+            return {
+                x: (e.clientX - rect.left) * scaleX,
+                y: (e.clientY - rect.top) * scaleY
+            };
+        }
+
+        maskCanvas.addEventListener('mousedown', (e) => {
+            if (!maskMode) return;
+            isPainting = true;
+            const pos = getMaskCoords(e);
+            maskCtx.beginPath();
+            maskCtx.moveTo(pos.x, pos.y);
+        });
+
+        maskCanvas.addEventListener('mousemove', (e) => {
+            if (!isPainting || !maskMode) return;
+            const pos = getMaskCoords(e);
+            maskCtx.lineTo(pos.x, pos.y);
+            maskCtx.strokeStyle = 'rgba(255, 0, 255, 1)';
+            maskCtx.lineWidth = 15;
+            maskCtx.lineCap = 'round';
+            maskCtx.lineJoin = 'round';
+            maskCtx.stroke();
+        });
+
+        maskCanvas.addEventListener('mouseup', () => {
+            isPainting = false;
+            maskData = maskCanvas.toDataURL();
+        });
+
+        maskCanvas.addEventListener('mouseleave', () => {
+            if (isPainting) {
+                isPainting = false;
+                maskData = maskCanvas.toDataURL();
+            }
+        });
+
+        // Load video from path
+        function loadVideo(filePath, restoreState = null) {
+            currentVideoPath = filePath;
+            video.src = `file://${filePath}`;
+            video.classList.add('hidden');
+            chromaCanvas.classList.remove('hidden');
+            dropzone.classList.add('hidden');
+            dragHandle.classList.remove('hidden');
+
+            chromaColor_value = null;
+            chromaTolerance_value = 0;
+            opacity_value = 100;
+            cancelAnimationFrame(animationFrameId);
+
+            video.onloadedmetadata = () => {
+                originalWidth = video.videoWidth;
+                originalHeight = video.videoHeight;
+                initMaskCanvas();
+
+                if (restoreState) {
+                    if (restoreState.chromaColor) {
+                        chromaColor_value = restoreState.chromaColor;
+                    }
+                    if (restoreState.chromaTolerance) {
+                        chromaTolerance_value = parseInt(restoreState.chromaTolerance);
+                    }
+                    if (restoreState.opacity) {
+                        opacity_value = parseInt(restoreState.opacity);
+                        chromaCanvas.style.opacity = opacity_value / 100;
+                    }
+                    if (restoreState.maskData) {
+                        const img = new Image();
+                        img.onload = () => {
+                            maskCtx.drawImage(img, 0, 0);
+                            maskData = restoreState.maskData;
+                        };
+                        img.src = restoreState.maskData;
+                    }
+                } else {
+                    const scale = Math.min(400 / originalWidth, 400 / originalHeight, 1);
+                    const newWidth = Math.max(50, originalWidth * scale);
+                    const newHeight = Math.max(50, originalHeight * scale);
+                    window.electronAPI.resizeWindow(newWidth, newHeight);
+                }
+
+                cancelAnimationFrame(animationFrameId);
+                renderFrame();
+            };
+
+            video.play();
+        }
+
+        // Get current state for saving/controls
+        function getCurrentState() {
+            return {
+                videoPath: currentVideoPath,
+                chromaEnabled: !!chromaColor_value,
+                chromaColor: chromaColor_value || '#00ff00',
+                chromaTolerance: String(chromaTolerance_value),
+                opacity: String(opacity_value),
+                maskData: maskData
+            };
+        }
+
+        // Shift+Right-click to open controls window
+        container.addEventListener('contextmenu', (e) => {
+            e.preventDefault(); // always prevent default context menu
+            if (e.shiftKey) {
+                window.electronAPI.openControls(getCurrentState());
+            }
+        });
+
+        // Listen for setting updates from controls window
+        window.electronAPI.onSettingUpdate((key, value) => {
+            switch (key) {
+                case 'opacity':
+                    opacity_value = parseInt(value);
+                    chromaCanvas.style.opacity = opacity_value / 100;
+                    break;
+                case 'chromaColor':
+                    chromaColor_value = value;
+                    break;
+                case 'chromaTolerance':
+                    chromaTolerance_value = parseInt(value);
+                    break;
+            }
+        });
+
+        // Controls requested eyedropper mode
+        window.electronAPI.onStartEyedropper(() => {
+            pickingMode = true;
+            document.body.classList.add('picking-mode');
+        });
+
+        // Controls toggled mask mode
+        window.electronAPI.onToggleMask(() => {
+            maskMode = !maskMode;
+            document.body.classList.toggle('mask-mode', maskMode);
+            window.electronAPI.maskState(maskMode);
+        });
+
+        // Controls cleared mask
+        window.electronAPI.onClearMask(() => {
+            maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+            maskData = null;
+        });
+
+        // Controls requested video change
+        window.electronAPI.onLoadNewVideo((filePath) => {
+            loadVideo(filePath);
+        });
+
+        // Controls requested size reset
+        window.electronAPI.onResetSize(() => {
+            const scale = Math.min(400 / originalWidth, 400 / originalHeight, 1);
+            const newWidth = Math.max(50, originalWidth * scale);
+            const newHeight = Math.max(50, originalHeight * scale);
+            window.electronAPI.resizeWindow(newWidth, newHeight);
+            showSizeIndicator(newWidth, newHeight);
+        });
+
+        // Controls requested export
+        window.electronAPI.onDoExport(async () => {
+            const ok = await window.electronAPI.exportBuddy(getCurrentState());
+            if (ok) {
+                sizeIndicator.textContent = 'Exported!';
+                sizeIndicator.classList.add('visible');
+                clearTimeout(sizeIndicator.timeout);
+                sizeIndicator.timeout = setTimeout(() => sizeIndicator.classList.remove('visible'), 2000);
+            }
+        });
+
+        // Controls requested close
+        window.electronAPI.onCloseRequested(() => {
+            window.electronAPI.closeApp(getCurrentState());
+        });
+
+        // Click to browse
+        dropzone.addEventListener('click', async () => {
+            const filePath = await window.electronAPI.selectVideo();
+            if (filePath) loadVideo(filePath);
+        });
+
+        // Drag and drop
+        dropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropzone.classList.add('dragover');
+        });
+
+        dropzone.addEventListener('dragleave', () => {
+            dropzone.classList.remove('dragover');
+        });
+
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file && (file.type.startsWith('video/') || file.name.endsWith('.webm') || file.name.endsWith('.gif'))) {
+                loadVideo(file.path);
+            }
+        });
+
+        // Load saved state on startup
+        async function initApp() {
+            const savedState = await window.electronAPI.loadState();
+            if (savedState?.videoPath) {
+                loadVideo(savedState.videoPath, savedState);
+            }
+        }
+
+        initApp();
+
+        // Manual window dragging (replaces -webkit-app-region: drag)
+        let isDragging = false;
+        let dragStartScreenX, dragStartScreenY;
+        let dragStartWinX, dragStartWinY;
+
+        dragHandle.addEventListener('mousedown', async (e) => {
+            if (e.button !== 0) return; // left click only
+            isDragging = true;
+            dragHandle.classList.add('dragging');
+            dragStartScreenX = e.screenX;
+            dragStartScreenY = e.screenY;
+            const pos = await window.electronAPI.getPosition();
+            dragStartWinX = pos[0];
+            dragStartWinY = pos[1];
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            const dx = e.screenX - dragStartScreenX;
+            const dy = e.screenY - dragStartScreenY;
+            window.electronAPI.moveWindow(dragStartWinX + dx, dragStartWinY + dy);
+        });
+
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+            dragHandle.classList.remove('dragging');
+        });
+
+        // Resize handle
+        let isResizing = false;
+        let startX, startY, startWidth, startHeight;
+
+        resizeHandle.addEventListener('mousedown', (e) => {
+            isResizing = true;
+            startX = e.screenX;
+            startY = e.screenY;
+            startWidth = window.innerWidth;
+            startHeight = window.innerHeight;
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isResizing) return;
+            const newWidth = Math.max(50, startWidth + (e.screenX - startX));
+            const newHeight = Math.max(50, startHeight + (e.screenY - startY));
+            window.electronAPI.resizeWindow(newWidth, newHeight);
+            showSizeIndicator(newWidth, newHeight);
+        });
+
+        document.addEventListener('mouseup', () => {
+            isResizing = false;
+        });
+
+        function showSizeIndicator(width, height) {
+            sizeIndicator.textContent = `${Math.round(width)} × ${Math.round(height)}`;
+            sizeIndicator.classList.add('visible');
+            clearTimeout(sizeIndicator.timeout);
+            sizeIndicator.timeout = setTimeout(() => {
+                sizeIndicator.classList.remove('visible');
+            }, 1500);
+        }
+
+        // Tutorial
+        const tutorialSteps = [
+            { icon: '👋', title: 'Welcome!', text: 'This is Desktop Buddy — a little animated widget that lives on your desktop.' },
+            { icon: '📂', title: 'Load a Video', text: 'Drop a .webm, .mp4, or .gif onto the window, or click to browse for one.' },
+            { icon: '✋', title: 'Move It Around', text: 'Left-click and drag anywhere on your buddy to move it around the screen.' },
+            { icon: '🔍', title: 'Resize', text: 'Scroll up/down over your buddy to make it bigger or smaller. You can also drag the corner.' },
+            { icon: '⚙️', title: 'Open Controls', text: 'Shift + Right-click on your buddy to open the controls panel with all the settings.' },
+            { icon: '🎨', title: 'Remove Backgrounds', text: 'In controls, use the eyedropper to pick a background color, then adjust tolerance to key it out.' },
+            { icon: '📤', title: 'Share Buddies', text: 'Export your buddy as a .buddy file to share with friends. They can import it!' },
+        ];
+
+        let tutorialStep = 0;
+        const tutorialEl = document.getElementById('tutorial');
+        const tutorialIcon = document.getElementById('tutorialIcon');
+        const tutorialTitle = document.getElementById('tutorialTitle');
+        const tutorialText = document.getElementById('tutorialText');
+        const tutorialDots = document.getElementById('tutorialDots');
+        const tutorialNext = document.getElementById('tutorialNext');
+        const tutorialSkip = document.getElementById('tutorialSkip');
+
+        function showTutorialStep(i) {
+            tutorialStep = i;
+            const step = tutorialSteps[i];
+            tutorialIcon.textContent = step.icon;
+            tutorialTitle.textContent = step.title;
+            tutorialText.textContent = step.text;
+            tutorialDots.innerHTML = tutorialSteps.map((_, idx) =>
+                `<div class="step-dot ${idx === i ? 'active' : ''}"></div>`
+            ).join('');
+            tutorialNext.textContent = i === tutorialSteps.length - 1 ? 'Got it!' : 'Next';
+        }
+
+        function closeTutorial() {
+            tutorialEl.classList.add('hidden');
+            localStorage.setItem('buddy-tutorial-seen', '1');
+        }
+
+        tutorialNext.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (tutorialStep >= tutorialSteps.length - 1) {
+                closeTutorial();
+            } else {
+                showTutorialStep(tutorialStep + 1);
+            }
+        });
+
+        tutorialSkip.addEventListener('click', (e) => {
+            e.stopPropagation();
+            closeTutorial();
+        });
+
+        // Show tutorial on first launch
+        if (!localStorage.getItem('buddy-tutorial-seen')) {
+            tutorialEl.classList.remove('hidden');
+            showTutorialStep(0);
+        }
+
+        // Scroll to resize
+        container.addEventListener('wheel', (e) => {
+            if (video.classList.contains('hidden') && chromaCanvas.classList.contains('hidden')) return;
+            e.preventDefault();
+            const scale = e.deltaY > 0 ? 0.9 : 1.1;
+            const newWidth = Math.max(50, Math.min(800, window.innerWidth * scale));
+            const newHeight = Math.max(50, Math.min(800, window.innerHeight * scale));
+            window.electronAPI.resizeWindow(newWidth, newHeight);
+            showSizeIndicator(newWidth, newHeight);
+        });
+    </script>
+</body>
+
+</html>
