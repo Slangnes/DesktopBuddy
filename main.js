@@ -10,6 +10,7 @@ let nextWindowId = 1;
 
 // State file path
 const stateFile = path.join(app.getPath('userData'), 'buddy-state.json');
+const tutorialFile = path.join(app.getPath('userData'), 'tutorial-seen');
 
 // Load saved state (array of buddy configs)
 function loadAllState() {
@@ -177,7 +178,7 @@ ipcMain.handle('select-video', async (event) => {
     const result = await dialog.showOpenDialog(win, {
         properties: ['openFile'],
         filters: [
-            { name: 'Video Files', extensions: ['webm', 'mp4', 'gif', 'webp'] }
+            { name: 'Media Files', extensions: ['webm', 'mp4', 'gif', 'webp', 'png', 'jpg', 'jpeg'] }
         ]
     });
 
@@ -349,6 +350,17 @@ app.on('before-quit', () => {
     saveAllState();
 });
 
+// Tutorial tracking via file (reliable across all windows)
+ipcMain.handle('should-show-tutorial', () => {
+    return !fs.existsSync(tutorialFile);
+});
+
+ipcMain.on('tutorial-seen', () => {
+    try {
+        fs.writeFileSync(tutorialFile, '1');
+    } catch (e) { /* ignore */ }
+});
+
 // --- Controls window IPC ---
 
 // Buddy requests to open controls
@@ -423,7 +435,7 @@ ipcMain.handle('controls-change-video', async (event) => {
     if (match && match.entry.window && !match.entry.window.isDestroyed()) {
         const result = await dialog.showOpenDialog(match.entry.window, {
             properties: ['openFile'],
-            filters: [{ name: 'Video Files', extensions: ['webm', 'mp4', 'gif', 'webp'] }]
+            filters: [{ name: 'Media Files', extensions: ['webm', 'mp4', 'gif', 'webp', 'png', 'jpg', 'jpeg'] }]
         });
         if (!result.canceled && result.filePaths.length > 0) {
             match.entry.window.webContents.send('load-new-video', result.filePaths[0]);

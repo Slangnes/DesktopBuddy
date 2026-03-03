@@ -15,6 +15,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     moveWindow: (x, y) => ipcRenderer.send('move-window', x, y),
     setWindowIcon: (dataUrl) => ipcRenderer.send('set-window-icon', dataUrl),
 
+    // Tutorial
+    shouldShowTutorial: () => ipcRenderer.invoke('should-show-tutorial'),
+    tutorialSeen: () => ipcRenderer.send('tutorial-seen'),
+
     // Controls window
     openControls: (state) => ipcRenderer.send('open-controls', state),
     colorPicked: (color) => ipcRenderer.send('buddy-color-picked', color),

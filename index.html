@@ -37,6 +37,15 @@
             pointer-events: none;
         }
 
+        /* Image source - kept in viewport but visually clipped so browser animates GIFs */
+        #imgSource {
+            position: absolute;
+            top: 0;
+            left: 0;
+            clip-path: inset(50%);
+            pointer-events: none;
+        }
+
         #dropzone {
             width: 100%;
             height: 100%;
@@ -284,10 +293,11 @@
             <svg viewBox="0 0 24 24" fill="currentColor">
                 <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
             </svg>
-            <p>Drop webm here<br>or click to browse</p>
+            <p>Drop video or GIF here<br>or click to browse</p>
         </div>
 
         <video id="video" class="hidden" loop muted autoplay></video>
+        <img id="imgSource">
         <canvas id="chromaCanvas" class="hidden"></canvas>
         <canvas id="maskCanvas" class="hidden"></canvas>
 
@@ -307,6 +317,7 @@
     <script>
         const dropzone = document.getElementById('dropzone');
         const video = document.getElementById('video');
+        const imgSource = document.getElementById('imgSource');
         const container = document.getElementById('container');
         const sizeIndicator = document.getElementById('sizeIndicator');
         const resizeHandle = document.getElementById('resizeHandle');
@@ -327,6 +338,73 @@
         let chromaTolerance_value = 0;
         let opacity_value = 100;
         let maskData = null;
+        let isImageMode = false;
+
+        // GIF/animated image frame decoder
+        let gifFrames = []; // [{bitmap: ImageBitmap, duration: ms}, ...]
+        let gifFrameIndex = 0;
+        let gifLastFrameTime = 0;
+
+        const imageExtensions = ['.gif', '.webp', '.png', '.jpg', '.jpeg'];
+        function isImageFile(filePath) {
+            const ext = filePath.toLowerCase().split('.').pop();
+            return imageExtensions.includes('.' + ext);
+        }
+
+        async function decodeAnimatedFrames(filePath) {
+            gifFrames.forEach(f => f.bitmap.close());
+            gifFrames = [];
+            gifFrameIndex = 0;
+            gifLastFrameTime = performance.now();
+
+            const ext = filePath.toLowerCase().split('.').pop();
+            const mimeTypes = { gif: 'image/gif', webp: 'image/webp' };
+            const mime = mimeTypes[ext];
+            if (!mime) return false;
+
+            try {
+                const response = await fetch(`file://${filePath}`);
+                const decoder = new ImageDecoder({
+                    data: response.body,
+                    type: mime
+                });
+
+                await decoder.completed;
+                const frameCount = decoder.tracks.selectedTrack.frameCount;
+
+                if (frameCount <= 1) {
+                    decoder.close();
+                    return false;
+                }
+
+                for (let i = 0; i < frameCount; i++) {
+                    const result = await decoder.decode({ frameIndex: i });
+                    const bitmap = await createImageBitmap(result.image);
+                    const duration = (result.image.duration || 100000) / 1000;
+                    result.image.close();
+                    gifFrames.push({ bitmap, duration });
+                }
+
+                decoder.close();
+                return true;
+            } catch (e) {
+                console.error('Failed to decode animated image:', e);
+                return false;
+            }
+        }
+
+        // Get the active media source (video or img, not used for decoded GIFs)
+        function getMediaSource() {
+            return isImageMode ? imgSource : video;
+        }
+        function getMediaWidth() {
+            if (gifFrames.length > 0) return gifFrames[0].bitmap.width;
+            return isImageMode ? imgSource.naturalWidth : video.videoWidth;
+        }
+        function getMediaHeight() {
+            if (gifFrames.length > 0) return gifFrames[0].bitmap.height;
+            return isImageMode ? imgSource.naturalHeight : video.videoHeight;
+        }
 
         // Temporary canvas for color sampling
         const sampleCanvas = document.createElement('canvas');
@@ -366,15 +444,28 @@
 
         // Render loop - always draws through canvas
         function renderFrame() {
-            if (video.paused || video.ended) {
+            if (!isImageMode && (video.paused || video.ended)) {
                 animationFrameId = requestAnimationFrame(renderFrame);
                 return;
             }
 
-            chromaCanvas.width = video.videoWidth;
-            chromaCanvas.height = video.videoHeight;
+            const sw = getMediaWidth();
+            const sh = getMediaHeight();
 
-            ctx.drawImage(video, 0, 0);
+            chromaCanvas.width = sw;
+            chromaCanvas.height = sh;
+
+            // Draw current frame from the appropriate source
+            if (gifFrames.length > 0) {
+                const now = performance.now();
+                if (now - gifLastFrameTime >= gifFrames[gifFrameIndex].duration) {
+                    gifLastFrameTime = now;
+                    gifFrameIndex = (gifFrameIndex + 1) % gifFrames.length;
+                }
+                ctx.drawImage(gifFrames[gifFrameIndex].bitmap, 0, 0);
+            } else {
+                ctx.drawImage(getMediaSource(), 0, 0);
+            }
 
             const tolerance = chromaTolerance_value;
             const hasChroma = chromaColor_value && tolerance > 0;
@@ -433,15 +524,22 @@
             animationFrameId = requestAnimationFrame(renderFrame);
         }
 
-        // Sample color from video at position
+        // Sample color from media at position
         function sampleColorAt(x, y) {
-            sampleCanvas.width = video.videoWidth;
-            sampleCanvas.height = video.videoHeight;
-            sampleCtx.drawImage(video, 0, 0);
+            const sw = getMediaWidth();
+            const sh = getMediaHeight();
+            sampleCanvas.width = sw;
+            sampleCanvas.height = sh;
+
+            if (gifFrames.length > 0) {
+                sampleCtx.drawImage(gifFrames[gifFrameIndex].bitmap, 0, 0);
+            } else {
+                sampleCtx.drawImage(getMediaSource(), 0, 0);
+            }
 
             const rect = chromaCanvas.getBoundingClientRect();
-            const scaleX = video.videoWidth / rect.width;
-            const scaleY = video.videoHeight / rect.height;
+            const scaleX = sw / rect.width;
+            const scaleY = sh / rect.height;
             const videoX = Math.floor((x - rect.left) * scaleX);
             const videoY = Math.floor((y - rect.top) * scaleY);
 
@@ -472,8 +570,8 @@
 
         // Mask painting
         function initMaskCanvas() {
-            maskCanvas.width = video.videoWidth;
-            maskCanvas.height = video.videoHeight;
+            maskCanvas.width = getMediaWidth();
+            maskCanvas.height = getMediaHeight();
             maskCanvas.classList.remove('hidden');
         }
 
@@ -518,11 +616,16 @@
             }
         });
 
-        // Load video from path
-        function loadVideo(filePath, restoreState = null) {
+        // Load media from path (video or image)
+        async function loadMedia(filePath, restoreState = null) {
             currentVideoPath = filePath;
-            video.src = `file://${filePath}`;
+            isImageMode = isImageFile(filePath);
+
+            // Hide both sources and clean up
             video.classList.add('hidden');
+            imgSource.src = '';
+            gifFrames.forEach(f => f.bitmap.close());
+            gifFrames = [];
             chromaCanvas.classList.remove('hidden');
             dropzone.classList.add('hidden');
             dragHandle.classList.remove('hidden');
@@ -530,11 +633,12 @@
             chromaColor_value = null;
             chromaTolerance_value = 0;
             opacity_value = 100;
+            iconSet = false;
             cancelAnimationFrame(animationFrameId);
 
-            video.onloadedmetadata = () => {
-                originalWidth = video.videoWidth;
-                originalHeight = video.videoHeight;
+            function onMediaReady() {
+                originalWidth = getMediaWidth();
+                originalHeight = getMediaHeight();
                 initMaskCanvas();
 
                 if (restoreState) {
@@ -549,12 +653,12 @@
                         chromaCanvas.style.opacity = opacity_value / 100;
                     }
                     if (restoreState.maskData) {
-                        const img = new Image();
-                        img.onload = () => {
-                            maskCtx.drawImage(img, 0, 0);
+                        const maskImg = new Image();
+                        maskImg.onload = () => {
+                            maskCtx.drawImage(maskImg, 0, 0);
                             maskData = restoreState.maskData;
                         };
-                        img.src = restoreState.maskData;
+                        maskImg.src = restoreState.maskData;
                     }
                 } else {
                     const scale = Math.min(400 / originalWidth, 400 / originalHeight, 1);
@@ -565,9 +669,23 @@
 
                 cancelAnimationFrame(animationFrameId);
                 renderFrame();
-            };
+            }
 
-            video.play();
+            if (isImageMode) {
+                // Try animated decode first (gif, webp)
+                const animated = await decodeAnimatedFrames(filePath);
+                if (animated) {
+                    onMediaReady();
+                } else {
+                    // Static image - use <img>
+                    imgSource.onload = onMediaReady;
+                    imgSource.src = `file://${filePath}`;
+                }
+            } else {
+                video.onloadedmetadata = onMediaReady;
+                video.src = `file://${filePath}`;
+                video.play();
+            }
         }
 
         // Get current state for saving/controls
@@ -627,7 +745,7 @@
 
         // Controls requested video change
         window.electronAPI.onLoadNewVideo((filePath) => {
-            loadVideo(filePath);
+            loadMedia(filePath);
         });
 
         // Controls requested size reset
@@ -658,7 +776,7 @@
         // Click to browse
         dropzone.addEventListener('click', async () => {
             const filePath = await window.electronAPI.selectVideo();
-            if (filePath) loadVideo(filePath);
+            if (filePath) loadMedia(filePath);
         });
 
         // Drag and drop
@@ -675,8 +793,8 @@
             e.preventDefault();
             dropzone.classList.remove('dragover');
             const file = e.dataTransfer.files[0];
-            if (file && (file.type.startsWith('video/') || file.name.endsWith('.webm') || file.name.endsWith('.gif'))) {
-                loadVideo(file.path);
+            if (file && (file.type.startsWith('video/') || file.type.startsWith('image/') || file.name.match(/\.(webm|mp4|gif|webp|png|jpg|jpeg)$/i))) {
+                loadMedia(file.path);
             }
         });
 
@@ -684,7 +802,7 @@
         async function initApp() {
             const savedState = await window.electronAPI.loadState();
             if (savedState?.videoPath) {
-                loadVideo(savedState.videoPath, savedState);
+                loadMedia(savedState.videoPath, savedState);
             }
         }
 
@@ -786,7 +904,7 @@
 
         function closeTutorial() {
             tutorialEl.classList.add('hidden');
-            localStorage.setItem('buddy-tutorial-seen', '1');
+            window.electronAPI.tutorialSeen();
         }
 
         tutorialNext.addEventListener('click', (e) => {
@@ -803,15 +921,17 @@
             closeTutorial();
         });
 
-        // Show tutorial on first launch
-        if (!localStorage.getItem('buddy-tutorial-seen')) {
-            tutorialEl.classList.remove('hidden');
-            showTutorialStep(0);
-        }
+        // Show tutorial on first launch (checked via main process)
+        window.electronAPI.shouldShowTutorial().then(show => {
+            if (show) {
+                tutorialEl.classList.remove('hidden');
+                showTutorialStep(0);
+            }
+        });
 
         // Scroll to resize
         container.addEventListener('wheel', (e) => {
-            if (video.classList.contains('hidden') && chromaCanvas.classList.contains('hidden')) return;
+            if (chromaCanvas.classList.contains('hidden')) return;
             e.preventDefault();
             const scale = e.deltaY > 0 ? 0.9 : 1.1;
             const newWidth = Math.max(50, Math.min(800, window.innerWidth * scale));
